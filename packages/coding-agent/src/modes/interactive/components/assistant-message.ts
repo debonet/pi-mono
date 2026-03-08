@@ -8,6 +8,7 @@ import { getMarkdownTheme, theme } from "../theme/theme.js";
 export class AssistantMessageComponent extends Container {
 	private contentContainer: Container;
 	private hideThinkingBlock: boolean;
+	private expanded: boolean;
 	private markdownTheme: MarkdownTheme;
 	private lastMessage?: AssistantMessage;
 
@@ -19,6 +20,7 @@ export class AssistantMessageComponent extends Container {
 		super();
 
 		this.hideThinkingBlock = hideThinkingBlock;
+		this.expanded = false;
 		this.markdownTheme = markdownTheme;
 
 		// Container for text/thinking content
@@ -41,15 +43,37 @@ export class AssistantMessageComponent extends Container {
 		this.hideThinkingBlock = hide;
 	}
 
+	setExpanded(expanded: boolean): void {
+		this.expanded = expanded;
+		if (this.lastMessage) {
+			this.updateContent(this.lastMessage);
+		}
+	}
+
 	updateContent(message: AssistantMessage): void {
 		this.lastMessage = message;
 
 		// Clear content container
 		this.contentContainer.clear();
 
+		const hasToolCalls = message.content.some((c) => c.type === "toolCall");
+
+		// When collapsed and message has tool calls, only show the last text block
+		const textBlocks = message.content
+			.map((c, i) => ({ content: c, index: i }))
+			.filter((item) => item.content.type === "text" && item.content.text.trim());
+
+		const lastTextIndex = textBlocks.length > 0 ? textBlocks[textBlocks.length - 1].index : -1;
+
+		const isTextVisible = (index: number): boolean => {
+			if (!hasToolCalls) return true;
+			if (this.expanded) return true;
+			return index === lastTextIndex;
+		};
+
 		const hasVisibleContent = message.content.some(
-			(c) =>
-				(c.type === "text" && c.text.trim()) ||
+			(c, i) =>
+				(c.type === "text" && c.text.trim() && isTextVisible(i)) ||
 				(c.type === "thinking" && c.thinking.trim() && !this.hideThinkingBlock),
 		);
 
@@ -61,6 +85,7 @@ export class AssistantMessageComponent extends Container {
 		for (let i = 0; i < message.content.length; i++) {
 			const content = message.content[i];
 			if (content.type === "text" && content.text.trim()) {
+				if (!isTextVisible(i)) continue;
 				// Assistant text messages with no background - trim the text
 				// Set paddingY=0 to avoid extra spacing before tool executions
 				this.contentContainer.addChild(new Markdown(content.text.trim(), 1, 0, this.markdownTheme));
@@ -69,7 +94,11 @@ export class AssistantMessageComponent extends Container {
 				// This avoids a superfluous blank line before separately-rendered tool execution blocks.
 				const hasVisibleContentAfter = message.content
 					.slice(i + 1)
-					.some((c) => (c.type === "text" && c.text.trim()) || (c.type === "thinking" && c.thinking.trim()));
+					.some(
+						(c, j) =>
+							(c.type === "text" && c.text.trim() && isTextVisible(i + 1 + j)) ||
+							(c.type === "thinking" && c.thinking.trim()),
+					);
 
 				if (this.hideThinkingBlock) {
 					// Fully hidden: no label, no space
@@ -90,7 +119,6 @@ export class AssistantMessageComponent extends Container {
 
 		// Check if aborted - show after partial content
 		// But only if there are no tool calls (tool execution components will show the error)
-		const hasToolCalls = message.content.some((c) => c.type === "toolCall");
 		if (!hasToolCalls) {
 			if (message.stopReason === "aborted") {
 				const abortMessage =
