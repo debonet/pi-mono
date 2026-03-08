@@ -12,7 +12,7 @@ export class UserMessageComponent extends Container {
 		super();
 		this.addChild(new Spacer(1));
 		this.addChild(
-			new Markdown(text, 1, 1, markdownTheme, {
+			new Markdown(text, 0, 1, markdownTheme, {
 				bgColor: (text: string) => theme.bg("userMessageBg", text),
 				color: (text: string) => theme.fg("userMessageText", text),
 			}),
