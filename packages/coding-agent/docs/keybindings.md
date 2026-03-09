@@ -99,7 +99,7 @@ Modifier combinations: `ctrl+shift+x`, `alt+ctrl+x`, `ctrl+shift+alt+x`, `ctrl+1
 
 | Action | Default | Description |
 |--------|---------|-------------|
-| `expandTools` | `ctrl+o` | Collapse/expand tool output |
+| `expandTools` | `ctrl+o` | Collapse/expand tool output and intermediate assistant text |
 | `toggleThinking` | `ctrl+t` | Collapse/expand thinking blocks |
 
 ### Message Queue
