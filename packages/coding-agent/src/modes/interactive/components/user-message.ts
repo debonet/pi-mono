@@ -8,11 +8,11 @@ const OSC133_ZONE_END = "\x1b]133;B\x07";
  * Component that renders a user message
  */
 export class UserMessageComponent extends Container {
-	constructor(text: string, markdownTheme: MarkdownTheme = getMarkdownTheme()) {
+	constructor(text: string, markdownTheme: MarkdownTheme = getMarkdownTheme(), paddingX = 1) {
 		super();
 		this.addChild(new Spacer(1));
 		this.addChild(
-			new Markdown(text, 0, 1, markdownTheme, {
+			new Markdown(text, paddingX, 1, markdownTheme, {
 				bgColor: (text: string) => theme.bg("userMessageBg", text),
 				color: (text: string) => theme.fg("userMessageText", text),
 			}),

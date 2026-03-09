@@ -93,6 +93,7 @@ export interface Settings {
 	autocompleteMaxVisible?: number; // Max visible items in autocomplete dropdown (default: 5)
 	showHardwareCursor?: boolean; // Show terminal cursor while still positioning it for IME
 	markdown?: MarkdownSettings;
+	messagePaddingX?: number; // Horizontal padding for message text (default: 1). Set to 0 for clean copy-paste.
 }
 
 /** Deep merge settings: project/overrides take precedence, nested objects merge recursively */
@@ -671,6 +672,10 @@ export class SettingsManager {
 
 	getHideThinkingBlock(): boolean {
 		return this.settings.hideThinkingBlock ?? false;
+	}
+
+	getMessagePaddingX(): number {
+		return this.settings.messagePaddingX ?? 1;
 	}
 
 	setHideThinkingBlock(hide: boolean): void {
