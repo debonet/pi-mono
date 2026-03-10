@@ -3,7 +3,6 @@
  * Handles TUI rendering and user interaction, delegating business logic to AgentSession.
  */
 
-import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -63,7 +62,7 @@ import { BUILTIN_SLASH_COMMANDS } from "../../core/slash-commands.js";
 import type { TruncationResult } from "../../core/tools/truncate.js";
 import { getChangelogPath, getNewEntries, parseChangelog } from "../../utils/changelog.js";
 import { copyToClipboard } from "../../utils/clipboard.js";
-import { extensionForImageMimeType, readClipboardImage } from "../../utils/clipboard-image.js";
+import { readClipboardImage } from "../../utils/clipboard-image.js";
 import { ensureTool } from "../../utils/tools-manager.js";
 import { ArminComponent } from "./components/armin.js";
 import { AssistantMessageComponent } from "./components/assistant-message.js";
@@ -183,6 +182,9 @@ export class InteractiveMode {
 
 	// Message text padding
 	private messagePaddingX = 1;
+
+	// Pending pasted images (cleared on submit or clear)
+	private pendingImages: ImageContent[] = [];
 
 	// Skill commands: command name -> skill file path
 	private skillCommands = new Map<string, string>();
@@ -566,7 +568,9 @@ export class InteractiveMode {
 		while (true) {
 			const userInput = await this.getUserInput();
 			try {
-				await this.session.prompt(userInput);
+				const images = this.pendingImages.length > 0 ? [...this.pendingImages] : undefined;
+				this.pendingImages = [];
+				await this.session.prompt(userInput, { images });
 			} catch (error: unknown) {
 				const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
 				this.showError(errorMessage);
@@ -1911,15 +1915,16 @@ export class InteractiveMode {
 				return;
 			}
 
-			// Write to temp file
-			const tmpDir = os.tmpdir();
-			const ext = extensionForImageMimeType(image.mimeType) ?? "png";
-			const fileName = `pi-clipboard-${crypto.randomUUID()}.${ext}`;
-			const filePath = path.join(tmpDir, fileName);
-			fs.writeFileSync(filePath, Buffer.from(image.bytes));
+			// Store image data for submission
+			const base64 = Buffer.from(image.bytes).toString("base64");
+			this.pendingImages.push({
+				type: "image",
+				mimeType: image.mimeType,
+				data: base64,
+			});
 
-			// Insert file path directly
-			this.editor.insertTextAtCursor?.(filePath);
+			// Insert placeholder in editor
+			this.editor.insertTextAtCursor?.(`[image ${this.pendingImages.length}]`);
 			this.ui.requestRender();
 		} catch {
 			// Silently ignore clipboard errors (may not have permission, etc.)
@@ -2075,7 +2080,9 @@ export class InteractiveMode {
 			if (this.session.isStreaming) {
 				this.editor.addToHistory?.(text);
 				this.editor.setText("");
-				await this.session.prompt(text, { streamingBehavior: "steer" });
+				const steerImages = this.pendingImages.length > 0 ? [...this.pendingImages] : undefined;
+				this.pendingImages = [];
+				await this.session.prompt(text, { streamingBehavior: "steer", images: steerImages });
 				this.updatePendingMessagesDisplay();
 				this.ui.requestRender();
 				return;
@@ -2397,6 +2404,12 @@ export class InteractiveMode {
 		return textBlocks.map((c) => (c as { text: string }).text).join("");
 	}
 
+	/** Extract image content from a user message */
+	private getUserMessageImages(message: Message): ImageContent[] {
+		if (message.role !== "user" || typeof message.content === "string") return [];
+		return message.content.filter((c): c is ImageContent => c.type === "image");
+	}
+
 	/**
 	 * Show a status message in the chat.
 	 *
@@ -2464,6 +2477,7 @@ export class InteractiveMode {
 			}
 			case "user": {
 				const textContent = this.getUserMessageText(message);
+				const userImages = this.getUserMessageImages(message);
 				if (textContent) {
 					const skillBlock = parseSkillBlock(textContent);
 					if (skillBlock) {
@@ -2481,6 +2495,7 @@ export class InteractiveMode {
 								skillBlock.userMessage,
 								this.getMarkdownThemeWithSettings(),
 								this.messagePaddingX,
+								userImages.length > 0 ? userImages : undefined,
 							);
 							this.chatContainer.addChild(userComponent);
 						}
@@ -2489,6 +2504,7 @@ export class InteractiveMode {
 							textContent,
 							this.getMarkdownThemeWithSettings(),
 							this.messagePaddingX,
+							userImages.length > 0 ? userImages : undefined,
 						);
 						this.chatContainer.addChild(userComponent);
 					}
@@ -2716,7 +2732,9 @@ export class InteractiveMode {
 		if (this.session.isStreaming) {
 			this.editor.addToHistory?.(text);
 			this.editor.setText("");
-			await this.session.prompt(text, { streamingBehavior: "followUp" });
+			const followUpImages = this.pendingImages.length > 0 ? [...this.pendingImages] : undefined;
+			this.pendingImages = [];
+			await this.session.prompt(text, { streamingBehavior: "followUp", images: followUpImages });
 			this.updatePendingMessagesDisplay();
 			this.ui.requestRender();
 		}
