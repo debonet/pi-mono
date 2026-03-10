@@ -23,7 +23,9 @@ import {
 	CombinedAutocompleteProvider,
 	type Component,
 	Container,
+	deleteAllKittyImages,
 	fuzzyFilter,
+	Image,
 	Loader,
 	Markdown,
 	matchesKey,
@@ -568,8 +570,8 @@ export class InteractiveMode {
 		while (true) {
 			const userInput = await this.getUserInput();
 			try {
-				const images = this.pendingImages.length > 0 ? [...this.pendingImages] : undefined;
-				this.pendingImages = [];
+				const images = this.collectPendingImages();
+				this.commitPendingImagesToChat();
 				await this.session.prompt(userInput, { images });
 			} catch (error: unknown) {
 				const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
@@ -1900,6 +1902,7 @@ export class InteractiveMode {
 			if (wasBashMode !== this.isBashMode) {
 				this.updateEditorBorderColor();
 			}
+			// Image sync disabled for now — focus on basic paste+submit flow
 		};
 
 		// Handle clipboard image paste (triggered on Ctrl+V)
@@ -1908,6 +1911,10 @@ export class InteractiveMode {
 		};
 	}
 
+	private static readonly IMAGE_PREVIEW_WIDGET_KEY = "__pending-images";
+	private static readonly IMAGE_PREVIEW_MAX_WIDTH = 30;
+	private static readonly IMAGE_PREVIEW_MAX_HEIGHT = 8;
+
 	private async handleClipboardImagePaste(): Promise<void> {
 		try {
 			const image = await readClipboardImage();
@@ -1915,7 +1922,7 @@ export class InteractiveMode {
 				return;
 			}
 
-			// Store image data for submission
+			// Store image data for thumbnail preview + attachment
 			const base64 = Buffer.from(image.bytes).toString("base64");
 			this.pendingImages.push({
 				type: "image",
@@ -1925,10 +1932,144 @@ export class InteractiveMode {
 
 			// Insert placeholder in editor
 			this.editor.insertTextAtCursor?.(`[image ${this.pendingImages.length}]`);
+			this.updatePendingImagesWidget();
 			this.ui.requestRender();
 		} catch {
 			// Silently ignore clipboard errors (may not have permission, etc.)
 		}
+	}
+
+	private updatePendingImagesWidget(): void {
+		const key = InteractiveMode.IMAGE_PREVIEW_WIDGET_KEY;
+		if (this.pendingImages.length === 0) {
+			this.setExtensionWidget(key, undefined);
+			return;
+		}
+
+		const images = this.pendingImages;
+		const maxW = InteractiveMode.IMAGE_PREVIEW_MAX_WIDTH;
+		const maxH = InteractiveMode.IMAGE_PREVIEW_MAX_HEIGHT;
+		const gap = 2;
+
+		this.setExtensionWidget(key, (_tui, _thm) => {
+			// Build child components: each is an Image + label stacked vertically
+			const vChild: Container[] = [];
+			for (let n = 0; n < images.length; n++) {
+				const cell = new Container();
+				cell.addChild(
+					new Image(
+						images[n].data!,
+						images[n].mimeType,
+						{ fallbackColor: (s: string) => theme.fg("muted", s) },
+						{ maxWidthCells: maxW, maxHeightCells: maxH },
+					),
+				);
+				cell.addChild(new Text(theme.fg("muted", `[image ${n + 1}]`), 0, 0));
+				vChild.push(cell);
+			}
+
+			const cellWidth = maxW + gap;
+
+			// Custom component that renders children in wrapping horizontal rows
+			return {
+				render(width: number): string[] {
+					const cPerRow = Math.max(1, Math.floor(width / cellWidth));
+					const vAllRows: string[] = [];
+					for (let nStart = 0; nStart < vChild.length; nStart += cPerRow) {
+						const vRowChild = vChild.slice(nStart, nStart + cPerRow);
+						const vRendered = vRowChild.map((c) => c.render(maxW));
+						const cLineMax = Math.max(...vRendered.map((lines) => lines.length));
+						for (let nLine = 0; nLine < cLineMax; nLine++) {
+							const vSegment: string[] = [];
+							for (const lines of vRendered) {
+								const line = nLine < lines.length ? lines[nLine] : "";
+								const pad = maxW - visibleWidth(line);
+								vSegment.push(line + (pad > 0 ? " ".repeat(pad) : ""));
+							}
+							vAllRows.push(vSegment.join(" ".repeat(gap)));
+						}
+						if (nStart + cPerRow < vChild.length) vAllRows.push("");
+					}
+					return vAllRows;
+				},
+				invalidate() {
+					for (const c of vChild) c.invalidate();
+				},
+			};
+		});
+	}
+
+	private collectPendingImages(): ImageContent[] | undefined {
+		return this.pendingImages.length > 0 ? [...this.pendingImages] : undefined;
+	}
+
+	private commitPendingImagesToChat(): void {
+		if (this.pendingImages.length === 0) return;
+
+		// Build a thumbnail row component and add it to chat (scrolls with conversation)
+		const images = [...this.pendingImages];
+		const maxW = InteractiveMode.IMAGE_PREVIEW_MAX_WIDTH;
+		const maxH = InteractiveMode.IMAGE_PREVIEW_MAX_HEIGHT;
+		const gap = 2;
+		const cellWidth = maxW + gap;
+
+		const vChild: Container[] = [];
+		for (let n = 0; n < images.length; n++) {
+			const cell = new Container();
+			cell.addChild(
+				new Image(
+					images[n].data!,
+					images[n].mimeType,
+					{ fallbackColor: (s: string) => theme.fg("muted", s) },
+					{ maxWidthCells: maxW, maxHeightCells: maxH },
+				),
+			);
+			cell.addChild(new Text(theme.fg("muted", `[image ${n + 1}]`), 0, 0));
+			vChild.push(cell);
+		}
+
+		const thumbnailRow: Component = {
+			render(width: number): string[] {
+				const cPerRow = Math.max(1, Math.floor(width / cellWidth));
+				const vAllRows: string[] = [];
+				for (let nStart = 0; nStart < vChild.length; nStart += cPerRow) {
+					const vRowChild = vChild.slice(nStart, nStart + cPerRow);
+					const vRendered = vRowChild.map((c) => c.render(maxW));
+					const cLineMax = Math.max(...vRendered.map((lines) => lines.length));
+					for (let nLine = 0; nLine < cLineMax; nLine++) {
+						const vSegment: string[] = [];
+						for (const lines of vRendered) {
+							const line = nLine < lines.length ? lines[nLine] : "";
+							const pad = maxW - visibleWidth(line);
+							vSegment.push(line + (pad > 0 ? " ".repeat(pad) : ""));
+						}
+						vAllRows.push(vSegment.join(" ".repeat(gap)));
+					}
+					if (nStart + cPerRow < vChild.length) vAllRows.push("");
+				}
+				return vAllRows;
+			},
+			invalidate() {
+				for (const c of vChild) c.invalidate();
+			},
+		};
+
+		this.chatContainer.addChild(thumbnailRow);
+		this.clearPendingImages();
+	}
+
+	private clearPendingImages(): void {
+		if (this.pendingImages.length === 0) return;
+		this.pendingImages = [];
+		// Force-remove the widget directly
+		const key = InteractiveMode.IMAGE_PREVIEW_WIDGET_KEY;
+		this.extensionWidgetsAbove.delete(key);
+		this.extensionWidgetsBelow.delete(key);
+		this.renderWidgets();
+		// Delete Kitty images, then invalidate all children to force full repaint
+		process.stdout.write(deleteAllKittyImages());
+		this.chatContainer.invalidate();
+		this.ui.requestRender(true);
 	}
 
 	private setupEditorSubmitHandler(): void {
@@ -2080,8 +2221,8 @@ export class InteractiveMode {
 			if (this.session.isStreaming) {
 				this.editor.addToHistory?.(text);
 				this.editor.setText("");
-				const steerImages = this.pendingImages.length > 0 ? [...this.pendingImages] : undefined;
-				this.pendingImages = [];
+				const steerImages = this.collectPendingImages();
+				this.commitPendingImagesToChat();
 				await this.session.prompt(text, { streamingBehavior: "steer", images: steerImages });
 				this.updatePendingMessagesDisplay();
 				this.ui.requestRender();
@@ -2404,12 +2545,6 @@ export class InteractiveMode {
 		return textBlocks.map((c) => (c as { text: string }).text).join("");
 	}
 
-	/** Extract image content from a user message */
-	private getUserMessageImages(message: Message): ImageContent[] {
-		if (message.role !== "user" || typeof message.content === "string") return [];
-		return message.content.filter((c): c is ImageContent => c.type === "image");
-	}
-
 	/**
 	 * Show a status message in the chat.
 	 *
@@ -2477,7 +2612,6 @@ export class InteractiveMode {
 			}
 			case "user": {
 				const textContent = this.getUserMessageText(message);
-				const userImages = this.getUserMessageImages(message);
 				if (textContent) {
 					const skillBlock = parseSkillBlock(textContent);
 					if (skillBlock) {
@@ -2495,7 +2629,6 @@ export class InteractiveMode {
 								skillBlock.userMessage,
 								this.getMarkdownThemeWithSettings(),
 								this.messagePaddingX,
-								userImages.length > 0 ? userImages : undefined,
 							);
 							this.chatContainer.addChild(userComponent);
 						}
@@ -2504,7 +2637,6 @@ export class InteractiveMode {
 							textContent,
 							this.getMarkdownThemeWithSettings(),
 							this.messagePaddingX,
-							userImages.length > 0 ? userImages : undefined,
 						);
 						this.chatContainer.addChild(userComponent);
 					}
@@ -2732,8 +2864,8 @@ export class InteractiveMode {
 		if (this.session.isStreaming) {
 			this.editor.addToHistory?.(text);
 			this.editor.setText("");
-			const followUpImages = this.pendingImages.length > 0 ? [...this.pendingImages] : undefined;
-			this.pendingImages = [];
+			const followUpImages = this.collectPendingImages();
+			this.commitPendingImagesToChat();
 			await this.session.prompt(text, { streamingBehavior: "followUp", images: followUpImages });
 			this.updatePendingMessagesDisplay();
 			this.ui.requestRender();
