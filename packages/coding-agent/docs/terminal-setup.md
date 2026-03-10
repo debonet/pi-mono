@@ -14,6 +14,15 @@ Add to your Ghostty config (`~/Library/Application Support/com.mitchellh.ghostty
 keybind = alt+backspace=text:\x1b\x7f
 ```
 
+For visual padding around content (recommended for readability), add:
+
+```
+window-padding-x = 8
+window-padding-y = 4
+```
+
+This adds terminal-level padding that does not affect text selection or copy-paste.
+
 Older Claude Code versions may have added this Ghostty mapping:
 
 ```
