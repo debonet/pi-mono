@@ -1914,8 +1914,8 @@ export class InteractiveMode {
 	}
 
 	private static readonly IMAGE_PREVIEW_WIDGET_KEY = "__pending-images";
-	private static readonly IMAGE_PREVIEW_MAX_WIDTH = 30;
-	private static readonly IMAGE_PREVIEW_MAX_HEIGHT = 8;
+	private static readonly IMAGE_PREVIEW_MAX_WIDTH = 20;
+	private static readonly IMAGE_PREVIEW_MAX_HEIGHT = 6;
 
 	private async handleClipboardImagePaste(): Promise<void> {
 		try {
