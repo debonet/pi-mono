@@ -572,6 +572,11 @@ export class InteractiveMode {
 			try {
 				const images = this.collectPendingImages();
 				this.commitPendingImagesToChat();
+				if (images) {
+					process.stderr.write(
+						`[image-submit] ${images.length} images, first has ${images[0].data?.length ?? 0} bytes data\n`,
+					);
+				}
 				await this.session.prompt(userInput, { images });
 			} catch (error: unknown) {
 				const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
@@ -2045,55 +2050,10 @@ export class InteractiveMode {
 	private commitPendingImagesToChat(): void {
 		if (this.pendingImages.length === 0) return;
 
-		// Build a thumbnail row component and add it to chat (scrolls with conversation)
-		const images = [...this.pendingImages];
-		const maxW = InteractiveMode.IMAGE_PREVIEW_MAX_WIDTH;
-		const maxH = InteractiveMode.IMAGE_PREVIEW_MAX_HEIGHT;
-		const gap = 2;
-		const cellWidth = maxW + gap;
-
-		const vChild: Container[] = [];
-		for (let n = 0; n < images.length; n++) {
-			const cell = new Container();
-			cell.addChild(
-				new Image(
-					images[n].data!,
-					images[n].mimeType,
-					{ fallbackColor: (s: string) => theme.fg("muted", s) },
-					{ maxWidthCells: maxW, maxHeightCells: maxH },
-				),
-			);
-			cell.addChild(new Text(theme.fg("muted", `[image ${n + 1}]`), 0, 0));
-			vChild.push(cell);
-		}
-
-		const thumbnailRow: Component = {
-			render(width: number): string[] {
-				const cPerRow = Math.max(1, Math.floor(width / cellWidth));
-				const vAllRows: string[] = [];
-				for (let nStart = 0; nStart < vChild.length; nStart += cPerRow) {
-					const vRowChild = vChild.slice(nStart, nStart + cPerRow);
-					const vRendered = vRowChild.map((c) => c.render(maxW));
-					const cLineMax = Math.max(...vRendered.map((lines) => lines.length));
-					for (let nLine = 0; nLine < cLineMax; nLine++) {
-						const vSegment: string[] = [];
-						for (const lines of vRendered) {
-							const line = nLine < lines.length ? lines[nLine] : "";
-							const pad = maxW - visibleWidth(line);
-							vSegment.push(line + (pad > 0 ? " ".repeat(pad) : ""));
-						}
-						vAllRows.push(vSegment.join(" ".repeat(gap)));
-					}
-					if (nStart + cPerRow < vChild.length) vAllRows.push("");
-				}
-				return vAllRows;
-			},
-			invalidate() {
-				for (const c of vChild) c.invalidate();
-			},
-		};
-
-		this.chatContainer.addChild(thumbnailRow);
+		// Add text-only labels to chat (Kitty images don't scroll with text)
+		const cImages = this.pendingImages.length;
+		const labels = Array.from({ length: cImages }, (_, n) => `[image ${n + 1}]`).join("  ");
+		this.chatContainer.addChild(new Text(theme.fg("muted", labels), 0, 0));
 		this.clearPendingImages();
 	}
 
