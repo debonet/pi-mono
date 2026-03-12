@@ -10325,6 +10325,23 @@ export const MODELS = {
 			contextWindow: 2000000,
 			maxTokens: 30000,
 		} satisfies Model<"openai-completions">,
+		"x-ai/grok-4.20-beta": {
+			id: "x-ai/grok-4.20-beta",
+			name: "xAI: Grok 4.20 Beta",
+			api: "openai-completions",
+			provider: "openrouter",
+			baseUrl: "https://openrouter.ai/api/v1",
+			reasoning: true,
+			input: ["text", "image"],
+			cost: {
+				input: 2,
+				output: 6,
+				cacheRead: 0.19999999999999998,
+				cacheWrite: 0,
+			},
+			contextWindow: 2000000,
+			maxTokens: 4096,
+		} satisfies Model<"openai-completions">,
 		"x-ai/grok-code-fast-1": {
 			id: "x-ai/grok-code-fast-1",
 			name: "xAI: Grok Code Fast 1",
@@ -12667,7 +12684,7 @@ export const MODELS = {
 			cost: {
 				input: 3,
 				output: 15,
-				cacheRead: 0,
+				cacheRead: 0.75,
 				cacheWrite: 0,
 			},
 			contextWindow: 256000,
@@ -13270,9 +13287,9 @@ export const MODELS = {
 			contextWindow: 2000000,
 			maxTokens: 30000,
 		} satisfies Model<"openai-completions">,
-		"grok-4.20-experimental-beta-0304-non-reasoning": {
-			id: "grok-4.20-experimental-beta-0304-non-reasoning",
-			name: "Grok 4.20 (Experimental, Non-Reasoning)",
+		"grok-4.20-beta-latest-non-reasoning": {
+			id: "grok-4.20-beta-latest-non-reasoning",
+			name: "Grok 4.20 Beta (Non-Reasoning)",
 			api: "openai-completions",
 			provider: "xai",
 			baseUrl: "https://api.x.ai/v1",
@@ -13287,9 +13304,9 @@ export const MODELS = {
 			contextWindow: 2000000,
 			maxTokens: 30000,
 		} satisfies Model<"openai-completions">,
-		"grok-4.20-experimental-beta-0304-reasoning": {
-			id: "grok-4.20-experimental-beta-0304-reasoning",
-			name: "Grok 4.20 (Experimental, Reasoning)",
+		"grok-4.20-beta-latest-reasoning": {
+			id: "grok-4.20-beta-latest-reasoning",
+			name: "Grok 4.20 Beta (Reasoning)",
 			api: "openai-completions",
 			provider: "xai",
 			baseUrl: "https://api.x.ai/v1",
@@ -13304,9 +13321,9 @@ export const MODELS = {
 			contextWindow: 2000000,
 			maxTokens: 30000,
 		} satisfies Model<"openai-completions">,
-		"grok-4.20-multi-agent-experimental-beta-0304": {
-			id: "grok-4.20-multi-agent-experimental-beta-0304",
-			name: "Grok 4.20 Multi-Agent (Experimental)",
+		"grok-4.20-multi-agent-beta-latest": {
+			id: "grok-4.20-multi-agent-beta-latest",
+			name: "Grok 4.20 Multi-Agent Beta",
 			api: "openai-completions",
 			provider: "xai",
 			baseUrl: "https://api.x.ai/v1",

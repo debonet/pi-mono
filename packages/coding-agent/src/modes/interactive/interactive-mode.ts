@@ -1902,7 +1902,9 @@ export class InteractiveMode {
 			if (wasBashMode !== this.isBashMode) {
 				this.updateEditorBorderColor();
 			}
-			// Image sync disabled for now — focus on basic paste+submit flow
+			if (this.pendingImages.length > 0) {
+				this.syncPendingImagesWithEditor(text);
+			}
 		};
 
 		// Handle clipboard image paste (triggered on Ctrl+V)
@@ -1997,6 +1999,43 @@ export class InteractiveMode {
 				},
 			};
 		});
+	}
+
+	private syncPendingImagesWithEditor(text: string): void {
+		// Find complete [image N] placeholders
+		const present = new Set<number>();
+		for (const m of text.matchAll(/\[image (\d+)\]/gi)) {
+			present.add(Number.parseInt(m[1], 10));
+		}
+
+		// Detect corrupted partials (e.g. "image 1]", "[image 1", "mage 2")
+		let cleaned = text;
+		let hasPartials = false;
+		cleaned = text.replace(/\[?image\s*\d+\]?/gi, (frag) => {
+			if (/^\[image \d+\]$/i.test(frag)) return frag;
+			hasPartials = true;
+			return "";
+		});
+
+		if (hasPartials) {
+			cleaned = cleaned.replace(/ {2,}/g, " ").trim();
+			present.clear();
+			for (const m of cleaned.matchAll(/\[image (\d+)\]/gi)) {
+				present.add(Number.parseInt(m[1], 10));
+			}
+		}
+
+		// Keep only images whose placeholder survives
+		const kept = this.pendingImages.filter((_, n) => present.has(n + 1));
+		if (kept.length === this.pendingImages.length && !hasPartials) return;
+
+		this.pendingImages = kept;
+
+		// Renumber remaining placeholders and update editor
+		let nNew = 0;
+		const renumbered = cleaned.replace(/\[image \d+\]/gi, () => `[image ${++nNew}]`);
+		this.editor.setText(renumbered);
+		this.updatePendingImagesWidget();
 	}
 
 	private collectPendingImages(): ImageContent[] | undefined {
