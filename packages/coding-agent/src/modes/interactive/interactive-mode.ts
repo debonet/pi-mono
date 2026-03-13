@@ -570,7 +570,7 @@ export class InteractiveMode {
 		while (true) {
 			const userInput = await this.getUserInput();
 			try {
-				const images = this.collectPendingImages();
+				const images = this.collectPendingImages(userInput);
 				this.commitPendingImagesToChat();
 				await this.session.prompt(userInput, { images });
 			} catch (error: unknown) {
@@ -1999,8 +1999,17 @@ export class InteractiveMode {
 		});
 	}
 
-	private collectPendingImages(): ImageContent[] | undefined {
-		return this.pendingImages.length > 0 ? [...this.pendingImages] : undefined;
+	private collectPendingImages(text: string): ImageContent[] | undefined {
+		if (this.pendingImages.length === 0) return undefined;
+
+		// Only include images whose [image N] placeholder is in the text
+		const present = new Set<number>();
+		for (const m of text.matchAll(/\[image (\d+)\]/gi)) {
+			present.add(Number.parseInt(m[1], 10));
+		}
+
+		const kept = this.pendingImages.filter((_, n) => present.has(n + 1));
+		return kept.length > 0 ? kept : undefined;
 	}
 
 	private commitPendingImagesToChat(): void {
@@ -2221,7 +2230,7 @@ export class InteractiveMode {
 			if (this.session.isStreaming) {
 				this.editor.addToHistory?.(text);
 				this.editor.setText("");
-				const steerImages = this.collectPendingImages();
+				const steerImages = this.collectPendingImages(text);
 				this.commitPendingImagesToChat();
 				await this.session.prompt(text, { streamingBehavior: "steer", images: steerImages });
 				this.updatePendingMessagesDisplay();
@@ -2864,7 +2873,7 @@ export class InteractiveMode {
 		if (this.session.isStreaming) {
 			this.editor.addToHistory?.(text);
 			this.editor.setText("");
-			const followUpImages = this.collectPendingImages();
+			const followUpImages = this.collectPendingImages(text);
 			this.commitPendingImagesToChat();
 			await this.session.prompt(text, { streamingBehavior: "followUp", images: followUpImages });
 			this.updatePendingMessagesDisplay();
