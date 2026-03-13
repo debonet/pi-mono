@@ -187,7 +187,6 @@ export class InteractiveMode {
 
 	// Pending pasted images (cleared on submit or clear)
 	private pendingImages: ImageContent[] = [];
-	private pendingImagesLocked = false;
 
 	// Skill commands: command name -> skill file path
 	private skillCommands = new Map<string, string>();
@@ -571,10 +570,8 @@ export class InteractiveMode {
 		while (true) {
 			const userInput = await this.getUserInput();
 			try {
-				this.pendingImagesLocked = true;
 				const images = this.collectPendingImages();
 				this.commitPendingImagesToChat();
-				this.pendingImagesLocked = false;
 				await this.session.prompt(userInput, { images });
 			} catch (error: unknown) {
 				const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
@@ -1905,9 +1902,7 @@ export class InteractiveMode {
 			if (wasBashMode !== this.isBashMode) {
 				this.updateEditorBorderColor();
 			}
-			if (this.pendingImages.length > 0 && !this.pendingImagesLocked) {
-				this.syncPendingImagesWithEditor(text);
-			}
+			// Image sync intentionally omitted — causes race condition during submit
 		};
 
 		// Handle clipboard image paste (triggered on Ctrl+V)
@@ -2002,43 +1997,6 @@ export class InteractiveMode {
 				},
 			};
 		});
-	}
-
-	private syncPendingImagesWithEditor(text: string): void {
-		// Find complete [image N] placeholders
-		const present = new Set<number>();
-		for (const m of text.matchAll(/\[image (\d+)\]/gi)) {
-			present.add(Number.parseInt(m[1], 10));
-		}
-
-		// Detect corrupted partials (e.g. "image 1]", "[image 1", "mage 2")
-		let cleaned = text;
-		let hasPartials = false;
-		cleaned = text.replace(/\[?image\s*\d+\]?/gi, (frag) => {
-			if (/^\[image \d+\]$/i.test(frag)) return frag;
-			hasPartials = true;
-			return "";
-		});
-
-		if (hasPartials) {
-			cleaned = cleaned.replace(/ {2,}/g, " ").trim();
-			present.clear();
-			for (const m of cleaned.matchAll(/\[image (\d+)\]/gi)) {
-				present.add(Number.parseInt(m[1], 10));
-			}
-		}
-
-		// Keep only images whose placeholder survives
-		const kept = this.pendingImages.filter((_, n) => present.has(n + 1));
-		if (kept.length === this.pendingImages.length && !hasPartials) return;
-
-		this.pendingImages = kept;
-
-		// Renumber remaining placeholders and update editor
-		let nNew = 0;
-		const renumbered = cleaned.replace(/\[image \d+\]/gi, () => `[image ${++nNew}]`);
-		this.editor.setText(renumbered);
-		this.updatePendingImagesWidget();
 	}
 
 	private collectPendingImages(): ImageContent[] | undefined {
@@ -2263,10 +2221,8 @@ export class InteractiveMode {
 			if (this.session.isStreaming) {
 				this.editor.addToHistory?.(text);
 				this.editor.setText("");
-				this.pendingImagesLocked = true;
 				const steerImages = this.collectPendingImages();
 				this.commitPendingImagesToChat();
-				this.pendingImagesLocked = false;
 				await this.session.prompt(text, { streamingBehavior: "steer", images: steerImages });
 				this.updatePendingMessagesDisplay();
 				this.ui.requestRender();
@@ -2908,10 +2864,8 @@ export class InteractiveMode {
 		if (this.session.isStreaming) {
 			this.editor.addToHistory?.(text);
 			this.editor.setText("");
-			this.pendingImagesLocked = true;
 			const followUpImages = this.collectPendingImages();
 			this.commitPendingImagesToChat();
-			this.pendingImagesLocked = false;
 			await this.session.prompt(text, { streamingBehavior: "followUp", images: followUpImages });
 			this.updatePendingMessagesDisplay();
 			this.ui.requestRender();
