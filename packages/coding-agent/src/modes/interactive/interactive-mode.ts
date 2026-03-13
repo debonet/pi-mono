@@ -187,6 +187,7 @@ export class InteractiveMode {
 
 	// Pending pasted images (cleared on submit or clear)
 	private pendingImages: ImageContent[] = [];
+	private pendingImagesLocked = false;
 
 	// Skill commands: command name -> skill file path
 	private skillCommands = new Map<string, string>();
@@ -570,13 +571,10 @@ export class InteractiveMode {
 		while (true) {
 			const userInput = await this.getUserInput();
 			try {
+				this.pendingImagesLocked = true;
 				const images = this.collectPendingImages();
 				this.commitPendingImagesToChat();
-				if (images) {
-					process.stderr.write(
-						`[image-submit] ${images.length} images, first has ${images[0].data?.length ?? 0} bytes data\n`,
-					);
-				}
+				this.pendingImagesLocked = false;
 				await this.session.prompt(userInput, { images });
 			} catch (error: unknown) {
 				const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
@@ -1907,7 +1905,7 @@ export class InteractiveMode {
 			if (wasBashMode !== this.isBashMode) {
 				this.updateEditorBorderColor();
 			}
-			if (this.pendingImages.length > 0) {
+			if (this.pendingImages.length > 0 && !this.pendingImagesLocked) {
 				this.syncPendingImagesWithEditor(text);
 			}
 		};
@@ -2265,8 +2263,10 @@ export class InteractiveMode {
 			if (this.session.isStreaming) {
 				this.editor.addToHistory?.(text);
 				this.editor.setText("");
+				this.pendingImagesLocked = true;
 				const steerImages = this.collectPendingImages();
 				this.commitPendingImagesToChat();
+				this.pendingImagesLocked = false;
 				await this.session.prompt(text, { streamingBehavior: "steer", images: steerImages });
 				this.updatePendingMessagesDisplay();
 				this.ui.requestRender();
@@ -2908,8 +2908,10 @@ export class InteractiveMode {
 		if (this.session.isStreaming) {
 			this.editor.addToHistory?.(text);
 			this.editor.setText("");
+			this.pendingImagesLocked = true;
 			const followUpImages = this.collectPendingImages();
 			this.commitPendingImagesToChat();
+			this.pendingImagesLocked = false;
 			await this.session.prompt(text, { streamingBehavior: "followUp", images: followUpImages });
 			this.updatePendingMessagesDisplay();
 			this.ui.requestRender();
